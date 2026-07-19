@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>North Cleaning - Dashboard SPA</title>
+    <!-- CSS File -->
+    <link rel="stylesheet" href="index.css?v=2">
+    <link rel="icon" type="image/png" href="https://cdn.bookingkoala.com/uploads/northcleaning/2026/5/29/17800989341.png">
+</head>
+<body>
+
+    <!-- APP HEADER -->
+    <header class="app-header">
+        <div class="logo-container">
+            <img class="company-logo" src="https://cdn.bookingkoala.com/uploads/northcleaning/2026/5/29/17800989341.png" alt="North Cleaning Logo">
+            <span class="logo-text">North Cleaning</span>
+        </div>
+        <div class="header-controls">
+            <button class="sync-btn" onclick="syncDataOnline()" title="Sincronizar com planilha">
+                <i data-lucide="refresh-cw"></i>
+                <span>Sincronizar</span>
+            </button>
+            <button class="theme-toggle-btn" onclick="toggleTheme()" title="Alternar Tema">
+                <i id="theme-icon" data-lucide="moon"></i>
+                <span>Tema</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN APP CONTAINER -->
+    <main class="app-container">
+        <!-- SPA HORIZONTAL SLIDER (600vw) -->
+        <div id="view-slider">
+            
+            <!-- TAB 1: VISÃO GERAL (DASHBOARD) -->
+            <section id="tab-dashboard" class="view-section">
+                <div class="view-header">
+                    <div class="view-title-area">
+                        <h1>Painel Geral</h1>
+                        <span class="view-subtitle">Resumo geral dos agendamentos e faturamento</span>
+                    </div>
+                    <div class="view-actions">
+                        <div class="form-group" style="min-width: 180px;">
+                            <label class="form-label" for="dashboard-date-picker">Selecione a Data:</label>
+                            <input class="input-control" type="date" id="dashboard-date-picker" onchange="loadDashboardTab()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPI Cards Grid -->
+                <div class="kpi-grid">
+                    <div class="glass-card kpi-card">
+                        <div class="kpi-icon"><i data-lucide="dollar-sign"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Receita Bruta</span>
+                            <span id="kpi-revenue" class="kpi-value">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <div class="kpi-icon"><i data-lucide="calendar-check"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Agendamentos</span>
+                            <span id="kpi-bookings" class="kpi-value">0</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <div class="kpi-icon"><i data-lucide="coins"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Gorjetas Totais</span>
+                            <span id="kpi-tips" class="kpi-value">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Ticket Médio</span>
+                            <span id="kpi-avg" class="kpi-value">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Preview & Activity -->
+                <div class="charts-grid">
+                    <div class="glass-card chart-card">
+                        <h3>Status dos Agendamentos</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-status-preview"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass-card">
+                        <h3>Agendamentos Recentes</h3>
+                        <div class="activity-list" id="recent-bookings-list" style="margin-top: 16px;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: VISÃO DIÁRIA -->
+            <section id="tab-daily" class="view-section">
+                <div class="view-header">
+                    <div class="view-title-area">
+                        <h1>Visão Diária</h1>
+                        <span class="view-subtitle">Controle operacional e financeiro do dia</span>
+                    </div>
+                    <div class="view-actions">
+                        <div class="form-group" style="min-width: 180px;">
+                            <label class="form-label" for="daily-date-picker">Selecione a Data:</label>
+                            <input class="input-control" type="date" id="daily-date-picker" onchange="loadDailyView()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPI Cards do Dia -->
+                <div class="kpi-grid">
+                    <div class="glass-card kpi-card" style="background: rgba(16, 185, 129, 0.08);">
+                        <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;"><i data-lucide="banknote"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Receita do Dia</span>
+                            <span id="daily-revenue" class="kpi-value">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card" style="background: rgba(99, 102, 241, 0.08);">
+                        <div class="kpi-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;"><i data-lucide="clipboard-list"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Agendamentos do Dia</span>
+                            <span id="daily-count" class="kpi-value">0</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card" style="background: rgba(245, 158, 11, 0.08);">
+                        <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;"><i data-lucide="alert-circle"></i></div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">Não Pagos</span>
+                            <span id="daily-unpaid-count" class="kpi-value">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Day Bookings Table -->
+                <div class="glass-card">
+                    <div class="table-container">
+                        <table class="elegant-table" id="daily-table">
+                            <thead>
+                                <tr>
+                                    <th>Horário</th>
+                                    <th>Nome do Cliente</th>
+                                    <th>Valor Final</th>
+                                    <th>Gorjeta (Tip)</th>
+                                    <th>Método Pagamento</th>
+                                    <th>Status</th>
+                                    <th>Data de Pagamento</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="daily-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: CALENDÁRIO -->
+            <section id="tab-calendar" class="view-section">
+                <div class="view-header">
+                    <div class="view-title-area">
+                        <h1>Calendário de Agendamentos</h1>
+                        <span class="view-subtitle">Calendário mensal de serviços e receita diária</span>
+                    </div>
+                </div>
+
+                <div class="glass-card calendar-container">
+                    <div class="calendar-header">
+                        <button class="calendar-nav-btn" onclick="changeMonth(-1)"><i data-lucide="chevron-left"></i></button>
+                        <span class="calendar-month-year" id="calendar-title">Julho 2026</span>
+                        <button class="calendar-nav-btn" onclick="changeMonth(1)"><i data-lucide="chevron-right"></i></button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid">
+                        <!-- Day headers and cells populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: LISTA GERAL -->
+            <section id="tab-bookings" class="view-section">
+                <div class="view-header">
+                    <div class="view-title-area">
+                        <h1>Base de Agendamentos</h1>
+                        <span class="view-subtitle">Pesquisa completa e filtros no banco de dados</span>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-row">
+                    <div class="form-group search-group">
+                        <label class="form-label" for="search-client">Buscar Cliente</label>
+                        <input class="input-control" type="text" id="search-client" placeholder="Digite o nome do cliente..." oninput="filterBookings()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="filter-status">Status</label>
+                        <select class="input-control" id="filter-status" onchange="filterBookings()">
+                            <option value="all">Todos os Status</option>
+                            <option value="Paid">Paid</option>
+                            <option value="Charged">Charged</option>
+                            <option value="Unassigned">Unassigned</option>
+                            <option value="Upcoming">Upcoming</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="filter-payment">Método Pagamento</label>
+                        <select class="input-control" id="filter-payment" onchange="filterBookings()">
+                            <option value="all">Todos</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Zelle / Venmo">Zelle / Venmo</option>
+                            <option value="Cash / Check">Cash / Check</option>
+                            <option value="Square">Square</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Big Bookings Table -->
+                <div class="glass-card">
+                    <div class="table-container">
+                        <table class="elegant-table" id="bookings-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Horário</th>
+                                    <th>Nome do Cliente</th>
+                                    <th>Valor</th>
+                                    <th>Gorjeta</th>
+                                    <th>Método Pagamento</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bookings-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div class="pagination">
+                        <span id="pagination-info" class="view-subtitle">Mostrando 1-10 de 651 agendamentos</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btn-prev" class="btn-page" onclick="prevPage()"><i data-lucide="chevron-left" style="width: 14px; height: 14px; vertical-align: middle;"></i> Anterior</button>
+                            <button id="btn-next" class="btn-page" onclick="nextPage()">Próximo <i data-lucide="chevron-right" style="width: 14px; height: 14px; vertical-align: middle;"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 5: RELATÓRIOS -->
+            <section id="tab-analytics" class="view-section">
+                <div class="view-header">
+                    <div class="view-title-area">
+                        <h1>Gráficos & Analytics</h1>
+                        <span class="view-subtitle">Visualização de faturamento e desempenho comercial</span>
+                    </div>
+                </div>
+
+                <!-- Reports Charts Grid -->
+                <div class="charts-grid">
+                    <div class="glass-card chart-card">
+                        <h3>Faturamento por Mês</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-monthly-revenue"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass-card chart-card">
+                        <h3>Volume por Canal de Pagamento</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-payment-methods"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid" style="margin-top: 12px;">
+                    <div class="glass-card chart-card">
+                        <h3>Status de Agendamento</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-status-distribution"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass-card" style="height: 320px; overflow-y: auto;">
+                        <h3>Ranking de Clientes (Faturamento)</h3>
+                        <div class="table-container" style="margin-top: 16px;">
+                            <table class="elegant-table">
+                                <thead>
+                                    <tr>
+                                        <th>Posição</th>
+                                        <th>Cliente</th>
+                                        <th>Qtd Serviços</th>
+                                        <th>Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-clients-tbody">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+
+        </div>
+    </main>
+
+    <!-- BOTTOM NAVBAR (PERSISTENTE FORA DO SLIDER) -->
+    <nav class="bottom-nav-bar">
+        <button id="nav-dashboard" class="nav-item active" onclick="switchTab('dashboard')">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Geral</span>
+        </button>
+        <button id="nav-daily" class="nav-item" onclick="switchTab('daily')">
+            <i data-lucide="calendar-days"></i>
+            <span>Diário</span>
+        </button>
+        <button id="nav-calendar" class="nav-item" onclick="switchTab('calendar')">
+            <i data-lucide="calendar"></i>
+            <span>Calendário</span>
+        </button>
+        <button id="nav-bookings" class="nav-item" onclick="switchTab('bookings')">
+            <i data-lucide="list-ordered"></i>
+            <span>Lista</span>
+        </button>
+        <button id="nav-analytics" class="nav-item" onclick="switchTab('analytics')">
+            <i data-lucide="trending-up"></i>
+            <span>Relatórios</span>
+        </button>
+    </nav>
+
+    <!-- DETAIL MODAL -->
+    <div id="detail-modal" class="modal-overlay" onclick="closeDetailModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>Detalhes do Agendamento</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body-content">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <!-- SheetJS Library for Excel Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js for beautiful charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Custom Application Script -->
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
