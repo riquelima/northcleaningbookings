@@ -32,8 +32,11 @@ function initApp() {
         }
     } else {
         bookings = [...window.INITIAL_BOOKINGS];
-        localStorage.setItem('north_bookings', JSON.stringify(bookings));
     }
+
+    // Deduplicate and sort initial bookings
+    bookings = deduplicateBookings(bookings);
+    localStorage.setItem('north_bookings', JSON.stringify(bookings));
 
     sortBookingsGlobal();
 
@@ -1237,7 +1240,7 @@ async function syncDataOnline() {
         }
         
         if (newBookings.length > 0) {
-            bookings = newBookings;
+            bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
             localStorage.setItem('north_bookings', JSON.stringify(bookings));
             
@@ -1358,7 +1361,7 @@ async function syncDataOnlineSilently() {
         }
         
         if (newBookings.length > 0) {
-            bookings = newBookings;
+            bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
             localStorage.setItem('north_bookings', JSON.stringify(bookings));
             refreshAllData();
@@ -1369,9 +1372,67 @@ async function syncDataOnlineSilently() {
     }
 }
 
-// ==========================================================================
-// DATA FORMATTING & HELPER UTILITIES
-// ==========================================================================
+// Deduplicate bookings by name, date and start hour
+function deduplicateBookings(arr) {
+    if (!arr || !Array.isArray(arr)) return [];
+    const bookingMap = new Map();
+    
+    for (const b of arr) {
+        if (!b.name || !b.date) continue;
+        
+        // Extract the start hour to group duplicates (e.g. "08:00 AM - 09:00 AM" -> "08 AM")
+        const cleanTime = String(b.time || "").trim();
+        let hourPart = "12 AM";
+        const timeMatch = cleanTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (timeMatch) {
+            hourPart = `${timeMatch[1].padStart(2, '0')} ${timeMatch[3].toUpperCase()}`;
+        } else if (cleanTime) {
+            // Fallback for cases like "08:00" or simple text hours
+            const simpleMatch = cleanTime.match(/^(\d{1,2})/);
+            if (simpleMatch) {
+                hourPart = `${simpleMatch[1].padStart(2, '0')} AM`; // Default to AM if unspecified
+            }
+        }
+        
+        const key = `${b.name.toLowerCase().trim()}|${b.date}|${hourPart}`;
+        
+        if (bookingMap.has(key)) {
+            const existing = bookingMap.get(key);
+            
+            // Merge duplicate columns:
+            // 1. Keep the more detailed time (has time range " - ")
+            if (cleanTime.includes(' - ') && !String(existing.time || "").includes(' - ')) {
+                existing.time = b.time;
+            }
+            // 2. Keep the more specific payment method (not "cash" lowercase or unspecified)
+            if (b.payment_method && b.payment_method !== 'Unspecified' && 
+                (!existing.payment_method || existing.payment_method === 'Unspecified' || existing.payment_method.toLowerCase() === 'cash')) {
+                existing.payment_method = b.payment_method;
+            }
+            // 3. Keep the payment date if present
+            if (b.payment_date && b.payment_date !== '-' && (!existing.payment_date || existing.payment_date === '-')) {
+                existing.payment_date = b.payment_date;
+            }
+            // 4. Keep status if more specific or paid
+            if (b.status === 'Paid' || b.status === 'Charged') {
+                existing.status = b.status;
+            }
+            // 5. Keep the higher amount / tip if there is one
+            if (b.amount > existing.amount) {
+                existing.amount = b.amount;
+            }
+            if (b.tip > existing.tip) {
+                existing.tip = b.tip;
+            }
+            existing.total = Math.round((existing.amount + existing.tip) * 100) / 100;
+        } else {
+            // Clone booking object to prevent side-effects on original array references
+            bookingMap.set(key, { ...b });
+        }
+    }
+    
+    return Array.from(bookingMap.values());
+}
 
 function formatCurrency(val) {
     return new Intl.NumberFormat('en-US', {
