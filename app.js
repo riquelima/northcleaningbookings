@@ -343,7 +343,20 @@ function loadDailyView() {
         
         const statusClass = `badge-${b.status.toLowerCase()}`;
         
-        const paymentDateVal = b.payment_date ? formatDateString(b.payment_date) : ((b.status === 'Paid' || b.status === 'Charged') ? formatDateString(b.date) : '-');
+        const isPaidOrCharged = b.status === 'Paid' || b.status === 'Charged';
+        let paymentDateVal = '-';
+        if (isPaidOrCharged) {
+            if (b.payment_date && b.payment_date.includes('-')) {
+                const year = parseInt(b.payment_date.split('-')[0]);
+                if (year > 2000) {
+                    paymentDateVal = formatDateString(b.payment_date);
+                } else {
+                    paymentDateVal = formatDateString(b.date);
+                }
+            } else {
+                paymentDateVal = formatDateString(b.date);
+            }
+        }
         
         tr.innerHTML = `
             <td style="font-weight: 600;">${b.time}</td>
@@ -985,7 +998,7 @@ function handleImportedFile(file) {
             }
             
             if (newBookings.length > 0) {
-                bookings = newBookings;
+                bookings = deduplicateBookings(newBookings);
                 sortBookingsGlobal();
                 localStorage.setItem('north_bookings', JSON.stringify(bookings));
                 
