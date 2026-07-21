@@ -94,16 +94,6 @@ function initApp() {
     
     // Initialize components
     refreshAllData();
-
-    // Trigger real-time sync in background on load
-    setTimeout(() => {
-        syncDataOnlineSilently();
-    }, 500);
-
-    // Periodic sync every 20 seconds in the background
-    setInterval(() => {
-        syncDataOnlineSilently();
-    }, 20000);
 }
 
 // REFRESH ALL DATA VIEWS
@@ -1285,7 +1275,7 @@ async function syncDataOnlineSilently() {
         
         const newBookings = parseRowsToBookings(rawRows);
         
-        if (newBookings.length > 0) {
+        if (newBookings.length >= 100) {
             bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
             localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
