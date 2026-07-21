@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v4';
+const STORAGE_KEY = 'north_bookings_v5';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v4_booking_status_mapped';
+const CURRENT_DB_VERSION = 'v5_paid_status_synced';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -918,6 +918,7 @@ function parseRowsToBookings(rawRows) {
     const colBookingId = findColIndex(['booking id', 'booking_id']);
     const colClientId = findColIndex(['client id', 'client_id']);
     const colTxId = findColIndex(['transaction id', 'transaction_id']);
+    const colPaymentDate = findColIndex(['payment date', 'payment_date']);
 
     const normalizeDateToISO = (dateVal, startDtVal) => {
         if (startDtVal && String(startDtVal).includes('T')) {
@@ -986,6 +987,7 @@ function parseRowsToBookings(rawRows) {
         const bookingIdIdx = colBookingId >= 0 ? colBookingId : -1;
         const clientIdIdx = colClientId >= 0 ? colClientId : -1;
         const txIdIdx = colTxId >= 0 ? colTxId : -1;
+        const paymentDateIdx = colPaymentDate >= 0 ? colPaymentDate : -1;
 
         const status = normalizeStatus(row[statusIdx]);
         const startDtVal = colStartDt >= 0 ? row[colStartDt] : null;
@@ -1008,6 +1010,7 @@ function parseRowsToBookings(rawRows) {
         const bookingId = bookingIdIdx >= 0 && row[bookingIdIdx] !== null && row[bookingIdIdx] !== undefined ? String(row[bookingIdIdx]).replace(/\.0$/, '').trim() : "";
         const clientId = clientIdIdx >= 0 && row[clientIdIdx] ? String(row[clientIdIdx]).trim() : "";
         const txId = txIdIdx >= 0 && row[txIdIdx] ? String(row[txIdIdx]).trim() : "";
+        const paymentDate = paymentDateIdx >= 0 && row[paymentDateIdx] ? normalizeDateToISO(row[paymentDateIdx]) : "-";
 
         const item = {
             status: status,
@@ -1019,7 +1022,8 @@ function parseRowsToBookings(rawRows) {
             tip: tip,
             total: Math.round((amount + tip) * 100) / 100,
             provider: provider,
-            booking_id: bookingId
+            booking_id: bookingId,
+            payment_date: paymentDate || "-"
         };
         if (clientId) item.client_id = clientId;
         if (txId) item.transaction_id = txId;
@@ -1348,8 +1352,10 @@ function deduplicateBookings(arr) {
             if (b.payment_date && b.payment_date !== '-' && (!existing.payment_date || existing.payment_date === '-')) {
                 existing.payment_date = b.payment_date;
             }
-            if ((b.status === 'Paid' || b.status === 'Charged' || b.status === 'Upcoming' || b.status === 'Completed') && 
-                !(existing.status === 'Paid' || existing.status === 'Charged' || existing.status === 'Upcoming' || existing.status === 'Completed')) {
+            const statusRank = { 'Paid': 5, 'Charged': 4, 'Completed': 3, 'Upcoming': 2, 'Unassigned': 1 };
+            const curRank = statusRank[b.status] || 0;
+            const exRank = statusRank[existing.status] || 0;
+            if (curRank > exRank) {
                 existing.status = b.status;
             }
             if (b.provider && b.provider !== 'Unassigned' && (!existing.provider || existing.provider === 'Unassigned')) {
