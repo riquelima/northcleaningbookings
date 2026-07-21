@@ -25,26 +25,30 @@ const STORAGE_VERSION_KEY = 'north_bookings_version';
 const CURRENT_DB_VERSION = 'v2_new_bookings_2026';
 
 function initApp() {
-    // Invalidate old cache version if needed
+    const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
+    
+    // Invalidate old cache version if needed or if stored items count is smaller than initial payload
     const savedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
-    if (savedVersion !== CURRENT_DB_VERSION) {
+    const localData = localStorage.getItem(STORAGE_KEY);
+    
+    let loadedFromLocal = false;
+    if (savedVersion === CURRENT_DB_VERSION && localData) {
+        try {
+            const parsed = JSON.parse(localData);
+            if (Array.isArray(parsed) && parsed.length >= initialArr.length && parsed.length > 0) {
+                bookings = parsed;
+                loadedFromLocal = true;
+            }
+        } catch (e) {
+            console.error("Erro ao carregar do localStorage, restaurando padrão.", e);
+        }
+    }
+    
+    if (!loadedFromLocal) {
         localStorage.removeItem('north_bookings');
         localStorage.removeItem(STORAGE_KEY);
         localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_DB_VERSION);
-        bookings = [...window.INITIAL_BOOKINGS];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
-    } else {
-        const localData = localStorage.getItem(STORAGE_KEY);
-        if (localData) {
-            try {
-                bookings = JSON.parse(localData);
-            } catch (e) {
-                console.error("Erro ao carregar do localStorage, restaurando padrão.", e);
-                bookings = [...window.INITIAL_BOOKINGS];
-            }
-        } else {
-            bookings = [...window.INITIAL_BOOKINGS];
-        }
+        bookings = [...initialArr];
     }
 
     // Deduplicate and sort initial bookings
@@ -1400,16 +1404,19 @@ function normalizePaymentMethod(pm) {
 }
 
 function getAtlantaDateString() {
+    try {
+        const now = new Date();
+        const nyDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        if (/^\d{4}-\d{2}-\d{2}$/.test(nyDateStr)) {
+            return nyDateStr;
+        }
+    } catch (e) {}
+    
     const today = new Date();
-    const options = { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' };
-    const formatter = new Intl.DateTimeFormat('en-US', options);
-    const parts = formatter.formatToParts(today);
-    
-    const month = parts.find(p => p.type === 'month').value;
-    const day = parts.find(p => p.type === 'day').value;
-    const year = parts.find(p => p.type === 'year').value;
-    
-    return `${year}-${month}-${day}`;
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
 }
 
 function parseTimeToMinutes(timeStr) {
