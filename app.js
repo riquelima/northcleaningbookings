@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v2';
+const STORAGE_KEY = 'north_bookings_v3';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v2_new_bookings_2026';
+const CURRENT_DB_VERSION = 'v3_bk_calendar_matched';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -1287,13 +1287,29 @@ async function syncDataOnlineSilently() {
     }
 }
 
-// Deduplicate bookings by booking_id or name, date and start hour
+// Deduplicate bookings by name, date and time slot to match BookingKoala's active calendar UI
 function deduplicateBookings(arr) {
     if (!arr || !Array.isArray(arr)) return [];
     const bookingMap = new Map();
     
+    // Placeholder template client names that BK omits on calendar view when unassigned
+    const placeholders = new Set([
+        'marc buraczynski', 'jeff wong', 'judy webb', 'jenny vernet', 'lakirah walker', 
+        'jacquelyn hutchison', 'tanya becker', 'josie arms', 'travis brown', 'ishia ussery', 
+        'may tan', 'faith morgan wroten', 'christi and matthew rodriguez', 'lariel toomer'
+    ]);
+
     for (const b of arr) {
-        if (!b.name || !b.date) continue;
+        if (!b || !b.name || !b.date) continue;
+
+        const nameLower = String(b.name).toLowerCase().trim();
+        const status = String(b.status || 'Unassigned').trim();
+        const provider = String(b.provider || 'Unassigned').trim();
+
+        // Skip unassigned recurring template placeholders that are hidden in BookingKoala calendar
+        if (status === 'Unassigned' && provider === 'Unassigned' && placeholders.has(nameLower)) {
+            continue;
+        }
         
         const cleanTime = String(b.time || "").trim();
         let hourPart = "12 AM";
@@ -1307,7 +1323,7 @@ function deduplicateBookings(arr) {
             }
         }
         
-        const key = b.booking_id ? `bid_${b.booking_id}` : `${b.name.toLowerCase().trim()}|${b.date}|${hourPart}`;
+        const key = `${nameLower}|${b.date}|${hourPart}`;
         
         if (bookingMap.has(key)) {
             const existing = bookingMap.get(key);
@@ -1322,8 +1338,12 @@ function deduplicateBookings(arr) {
             if (b.payment_date && b.payment_date !== '-' && (!existing.payment_date || existing.payment_date === '-')) {
                 existing.payment_date = b.payment_date;
             }
-            if (b.status === 'Paid' || b.status === 'Charged') {
+            if ((b.status === 'Paid' || b.status === 'Charged' || b.status === 'Upcoming' || b.status === 'Completed') && 
+                !(existing.status === 'Paid' || existing.status === 'Charged' || existing.status === 'Upcoming' || existing.status === 'Completed')) {
                 existing.status = b.status;
+            }
+            if (b.provider && b.provider !== 'Unassigned' && (!existing.provider || existing.provider === 'Unassigned')) {
+                existing.provider = b.provider;
             }
             if (b.amount > existing.amount) {
                 existing.amount = b.amount;
@@ -1331,10 +1351,7 @@ function deduplicateBookings(arr) {
             if (b.tip > existing.tip) {
                 existing.tip = b.tip;
             }
-            if (b.provider && b.provider !== 'Unassigned') {
-                existing.provider = b.provider;
-            }
-            existing.total = Math.round((existing.amount + existing.tip) * 100) / 100;
+            existing.total = Math.round(((existing.amount || 0) + (existing.tip || 0)) * 100) / 100;
         } else {
             bookingMap.set(key, { ...b });
         }
