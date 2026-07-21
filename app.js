@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v3';
+const STORAGE_KEY = 'north_bookings_v4';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v3_bk_calendar_matched';
+const CURRENT_DB_VERSION = 'v4_booking_status_mapped';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -893,21 +893,31 @@ function parseRowsToBookings(rawRows) {
     const headers = (rawRows[0] || []).map(h => String(h || '').trim().toLowerCase());
 
     const findColIndex = (keywords) => {
-        return headers.findIndex(h => keywords.some(k => h.includes(k.toLowerCase())));
+        // Try exact header match first
+        for (const k of keywords) {
+            const idx = headers.findIndex(h => h === k.toLowerCase());
+            if (idx >= 0) return idx;
+        }
+        // Fallback to substring match
+        for (const k of keywords) {
+            const idx = headers.findIndex(h => h.includes(k.toLowerCase()));
+            if (idx >= 0) return idx;
+        }
+        return -1;
     };
 
-    const colStatus = findColIndex(['booking status', 'status']);
-    const colName = findColIndex(['full name', 'nome', 'client name', 'client']);
-    const colStartDt = findColIndex(['booking start date time']);
+    const colStatus = findColIndex(['booking status', 'booking_status', 'status']);
+    const colName = findColIndex(['full name', 'client name', 'nome', 'client', 'name']);
+    const colStartDt = findColIndex(['booking start date time', 'start date time', 'start_date_time']);
     const colDate = findColIndex(['date', 'data']);
     const colTime = findColIndex(['time', 'horário', 'horario']);
-    const colAmount = findColIndex(['final amount', 'amount', 'valor']);
-    const colPayment = findColIndex(['payment method', 'método', 'metodo', 'payment']);
-    const colTip = findColIndex(['tip', 'gorjeta']);
-    const colProvider = findColIndex(['provider', 'team']);
-    const colBookingId = findColIndex(['booking id']);
-    const colClientId = findColIndex(['client id']);
-    const colTxId = findColIndex(['transaction id']);
+    const colAmount = findColIndex(['final amount (usd)', 'final amount', 'amount', 'valor']);
+    const colPayment = findColIndex(['payment method', 'payment_method', 'método', 'metodo', 'payment']);
+    const colTip = findColIndex(['tip (usd)', 'tip', 'gorjeta']);
+    const colProvider = findColIndex(['provider/team', 'provider', 'team', 'profissional', 'equipe']);
+    const colBookingId = findColIndex(['booking id', 'booking_id']);
+    const colClientId = findColIndex(['client id', 'client_id']);
+    const colTxId = findColIndex(['transaction id', 'transaction_id']);
 
     const normalizeDateToISO = (dateVal, startDtVal) => {
         if (startDtVal && String(startDtVal).includes('T')) {
