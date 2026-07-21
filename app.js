@@ -20,23 +20,36 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
+const STORAGE_KEY = 'north_bookings_v2';
+const STORAGE_VERSION_KEY = 'north_bookings_version';
+const CURRENT_DB_VERSION = 'v2_new_bookings_2026';
+
 function initApp() {
-    // Load bookings from localStorage or fallback to INITIAL_BOOKINGS
-    const localData = localStorage.getItem('north_bookings');
-    if (localData) {
-        try {
-            bookings = JSON.parse(localData);
-        } catch (e) {
-            console.error("Erro ao carregar do localStorage, restaurando padrão.", e);
+    // Invalidate old cache version if needed
+    const savedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (savedVersion !== CURRENT_DB_VERSION) {
+        localStorage.removeItem('north_bookings');
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_DB_VERSION);
+        bookings = [...window.INITIAL_BOOKINGS];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
+    } else {
+        const localData = localStorage.getItem(STORAGE_KEY);
+        if (localData) {
+            try {
+                bookings = JSON.parse(localData);
+            } catch (e) {
+                console.error("Erro ao carregar do localStorage, restaurando padrão.", e);
+                bookings = [...window.INITIAL_BOOKINGS];
+            }
+        } else {
             bookings = [...window.INITIAL_BOOKINGS];
         }
-    } else {
-        bookings = [...window.INITIAL_BOOKINGS];
     }
 
     // Deduplicate and sort initial bookings
     bookings = deduplicateBookings(bookings);
-    localStorage.setItem('north_bookings', JSON.stringify(bookings));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
 
     sortBookingsGlobal();
 
@@ -395,7 +408,7 @@ function toggleStatusPrompt(idx) {
     b.status = statusOptions[nextIdx];
     
     // Save
-    localStorage.setItem('north_bookings', JSON.stringify(bookings));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
     
     // Notification or alert (optional, we just refresh UI)
     refreshAllData();
@@ -1043,7 +1056,7 @@ function handleImportedFile(file) {
             if (newBookings.length > 0) {
                 bookings = deduplicateBookings(newBookings);
                 sortBookingsGlobal();
-                localStorage.setItem('north_bookings', JSON.stringify(bookings));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
                 
                 alert(`Importado com sucesso! ${bookings.length} agendamentos carregados da aba '${sheetName}'.`);
                 refreshAllData();
@@ -1174,8 +1187,10 @@ function changeBlur(val) {
 function resetSystemData() {
     if (confirm("Tem certeza que deseja restaurar os dados originais da planilha? Todas as modificações manuais serão perdidas.")) {
         localStorage.removeItem('north_bookings');
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_VERSION_KEY);
         bookings = [...window.INITIAL_BOOKINGS];
-        localStorage.setItem('north_bookings', JSON.stringify(bookings));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
         
         // Reset picker
         selectedDailyDate = getAtlantaDateString();
@@ -1228,7 +1243,7 @@ async function syncDataOnline() {
         if (newBookings.length > 0) {
             bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
-            localStorage.setItem('north_bookings', JSON.stringify(bookings));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
             
             refreshAllData();
             alert(`Sincronização concluída! ${bookings.length} agendamentos atualizados da aba '${sheetName}'.`);
@@ -1269,7 +1284,7 @@ async function syncDataOnlineSilently() {
         if (newBookings.length > 0) {
             bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
-            localStorage.setItem('north_bookings', JSON.stringify(bookings));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
             refreshAllData();
             console.log("Planilha sincronizada silenciosamente em tempo real (aba: " + sheetName + ").");
         }
