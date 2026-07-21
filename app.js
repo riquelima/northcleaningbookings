@@ -880,6 +880,139 @@ function setupDragAndDrop() {
     });
 }
 
+function parseRowsToBookings(rawRows) {
+    if (!rawRows || rawRows.length <= 1) return [];
+
+    const headers = (rawRows[0] || []).map(h => String(h || '').trim().toLowerCase());
+
+    const findColIndex = (keywords) => {
+        return headers.findIndex(h => keywords.some(k => h.includes(k.toLowerCase())));
+    };
+
+    const colStatus = findColIndex(['booking status', 'status']);
+    const colName = findColIndex(['full name', 'nome', 'client name', 'client']);
+    const colStartDt = findColIndex(['booking start date time']);
+    const colDate = findColIndex(['date', 'data']);
+    const colTime = findColIndex(['time', 'horário', 'horario']);
+    const colAmount = findColIndex(['final amount', 'amount', 'valor']);
+    const colPayment = findColIndex(['payment method', 'método', 'metodo', 'payment']);
+    const colTip = findColIndex(['tip', 'gorjeta']);
+    const colProvider = findColIndex(['provider', 'team']);
+    const colBookingId = findColIndex(['booking id']);
+    const colClientId = findColIndex(['client id']);
+    const colTxId = findColIndex(['transaction id']);
+
+    const normalizeDateToISO = (dateVal, startDtVal) => {
+        if (startDtVal && String(startDtVal).includes('T')) {
+            return String(startDtVal).split('T')[0];
+        }
+        if (!dateVal) return "";
+        const dateStr = String(dateVal).trim();
+        if (dateStr.includes('T')) {
+            return dateStr.split('T')[0];
+        }
+        if (/^\d+(\.\d+)?$/.test(dateStr)) {
+            const val = parseFloat(dateStr);
+            const dateObj = new Date(Date.UTC(1899, 11, 30) + val * 86400 * 1000);
+            return dateObj.toISOString().split('T')[0];
+        }
+        const matchISO = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (matchISO) return matchISO[0];
+        
+        const matchUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (matchUS) {
+            const month = matchUS[1].padStart(2, '0');
+            const day = matchUS[2].padStart(2, '0');
+            const year = matchUS[3];
+            return `${year}-${month}-${day}`;
+        }
+        return dateStr;
+    };
+
+    const excelTimeToJS = (excelVal) => {
+        let val = parseFloat(excelVal);
+        if (isNaN(val)) return String(excelVal).trim();
+        if (val > 1.0) {
+            val = val - Math.floor(val);
+        }
+        const totalSeconds = Math.round(val * 86400);
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        
+        let period = "AM";
+        let dHrs = hrs;
+        if (hrs >= 12) {
+            period = "PM";
+            if (hrs > 12) dHrs -= 12;
+        }
+        if (dHrs === 0) dHrs = 12;
+        return `${String(dHrs).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
+    };
+
+    const newBookings = [];
+
+    for (let i = 1; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        if (!row || row.length < 2) continue;
+
+        const nameIdx = colName >= 0 ? colName : 1;
+        const rawName = row[nameIdx];
+        if (!rawName || String(rawName).trim() === "") continue;
+
+        const statusIdx = colStatus >= 0 ? colStatus : 0;
+        const dateIdx = colDate >= 0 ? colDate : 2;
+        const timeIdx = colTime >= 0 ? colTime : 3;
+        const amountIdx = colAmount >= 0 ? colAmount : 4;
+        const paymentIdx = colPayment >= 0 ? colPayment : 5;
+        const tipIdx = colTip >= 0 ? colTip : 6;
+        const providerIdx = colProvider >= 0 ? colProvider : -1;
+        const bookingIdIdx = colBookingId >= 0 ? colBookingId : -1;
+        const clientIdIdx = colClientId >= 0 ? colClientId : -1;
+        const txIdIdx = colTxId >= 0 ? colTxId : -1;
+
+        const status = normalizeStatus(row[statusIdx]);
+        const startDtVal = colStartDt >= 0 ? row[colStartDt] : null;
+        const dateVal = normalizeDateToISO(row[dateIdx], startDtVal);
+
+        let timeVal = row[timeIdx];
+        if (timeVal) {
+            timeVal = String(timeVal).trim();
+            if (/^\d+(\.\d+)?$/.test(timeVal)) {
+                timeVal = excelTimeToJS(timeVal);
+            }
+        } else {
+            timeVal = "";
+        }
+
+        const amount = cleanAmount(row[amountIdx]);
+        const payment = normalizePaymentMethod(row[paymentIdx]);
+        const tip = cleanAmount(row[tipIdx]);
+        const provider = providerIdx >= 0 && row[providerIdx] ? String(row[providerIdx]).trim() : "Unassigned";
+        const bookingId = bookingIdIdx >= 0 && row[bookingIdIdx] !== null && row[bookingIdIdx] !== undefined ? String(row[bookingIdIdx]).replace(/\.0$/, '').trim() : "";
+        const clientId = clientIdIdx >= 0 && row[clientIdIdx] ? String(row[clientIdIdx]).trim() : "";
+        const txId = txIdIdx >= 0 && row[txIdIdx] ? String(row[txIdIdx]).trim() : "";
+
+        const item = {
+            status: status,
+            name: String(rawName).trim(),
+            date: dateVal,
+            time: timeVal,
+            amount: amount,
+            payment_method: payment,
+            tip: tip,
+            total: Math.round((amount + tip) * 100) / 100,
+            provider: provider,
+            booking_id: bookingId
+        };
+        if (clientId) item.client_id = clientId;
+        if (txId) item.transaction_id = txId;
+
+        newBookings.push(item);
+    }
+
+    return newBookings;
+}
+
 function handleImportedFile(file) {
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -887,11 +1020,10 @@ function handleImportedFile(file) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             
-            // Find Bookings sheet
-            let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'bookings');
-            if (!sheetName && workbook.SheetNames.length > 0) {
-                sheetName = workbook.SheetNames[0]; // Fallback to first sheet
-            }
+            // Prioritize 'New Bookings' sheet, fallback to 'Bookings' sheet or first sheet
+            let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'new bookings') ||
+                            workbook.SheetNames.find(n => n.toLowerCase() === 'bookings') ||
+                            workbook.SheetNames[0];
             
             if (!sheetName) {
                 alert("Nenhuma planilha encontrada no arquivo.");
@@ -899,7 +1031,6 @@ function handleImportedFile(file) {
             }
             
             const sheet = workbook.Sheets[sheetName];
-            // Convert sheet to JSON including headers
             const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
             
             if (rawRows.length <= 1) {
@@ -907,102 +1038,14 @@ function handleImportedFile(file) {
                 return;
             }
             
-            // Headers: Index mappings
-            // A: Booking status, B: Full name, C: Date, D: Time, E: Final amount (USD), F: Payment method, G: Tip (USD)
-            const newBookings = [];
-            
-            // Excel serial date to JS string or normalize string date
-            const normalizeDateToISO = (dateVal) => {
-                if (!dateVal) return "";
-                const dateStr = String(dateVal).trim();
-                if (/^\d+(\.\d+)?$/.test(dateStr)) {
-                    const val = parseFloat(dateStr);
-                    const dateObj = new Date(Date.UTC(1899, 11, 30) + val * 86400 * 1000);
-                    return dateObj.toISOString().split('T')[0];
-                }
-                const matchISO = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                if (matchISO) return dateStr;
-                
-                const matchUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                if (matchUS) {
-                    const month = matchUS[1].padStart(2, '0');
-                    const day = matchUS[2].padStart(2, '0');
-                    const year = matchUS[3];
-                    return `${year}-${month}-${day}`;
-                }
-                return dateStr;
-            };
-            
-            // Excel serial time to JS string
-            const excelTimeToJS = (excelVal) => {
-                let val = parseFloat(excelVal);
-                if (isNaN(val)) return String(excelVal).trim();
-                if (val > 1.0) {
-                    val = val - Math.floor(val);
-                }
-                const totalSeconds = Math.round(val * 86400);
-                const hrs = Math.floor(totalSeconds / 3600);
-                const mins = Math.floor((totalSeconds % 3600) / 60);
-                
-                let period = "AM";
-                let dHrs = hrs;
-                if (hrs >= 12) {
-                    period = "PM";
-                    if (hrs > 12) dHrs -= 12;
-                }
-                if (dHrs === 0) dHrs = 12;
-                return `${String(dHrs).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
-            };
-            
-            // Start reading rows, skip row 0 (headers)
-            for (let i = 1; i < rawRows.length; i++) {
-                const row = rawRows[i];
-                if (!row || row.length < 2) continue;
-                
-                const rawName = row[1]; // B
-                if (!rawName || String(rawName).trim() === "") continue;
-                
-                // Fields
-                const status = normalizeStatus(row[0]); // A
-                const dateVal = normalizeDateToISO(row[2]); // C
-                
-                // Time
-                let timeVal = row[3]; // D
-                if (timeVal) {
-                    timeVal = String(timeVal).trim();
-                    if (/^\d+(\.\d+)?$/.test(timeVal)) {
-                        timeVal = excelTimeToJS(timeVal);
-                    }
-                } else {
-                    timeVal = "";
-                }
-                
-                const amount = cleanAmount(row[4]); // E
-                const payment = normalizePaymentMethod(row[5]); // F
-                const tip = cleanAmount(row[6]); // G
-                
-                // Extract Column H (payment_date) if present
-                const paymentDateVal = normalizeDateToISO(row[7]); // H
-                
-                newBookings.push({
-                    status: status,
-                    name: String(rawName).trim(),
-                    date: dateVal,
-                    time: timeVal,
-                    amount: amount,
-                    payment_method: payment,
-                    tip: tip,
-                    total: Math.round((amount + tip) * 100) / 100,
-                    payment_date: paymentDateVal
-                });
-            }
+            const newBookings = parseRowsToBookings(rawRows);
             
             if (newBookings.length > 0) {
                 bookings = deduplicateBookings(newBookings);
                 sortBookingsGlobal();
                 localStorage.setItem('north_bookings', JSON.stringify(bookings));
                 
-                alert(`Importado com sucesso! ${bookings.length} agendamentos carregados.`);
+                alert(`Importado com sucesso! ${bookings.length} agendamentos carregados da aba '${sheetName}'.`);
                 refreshAllData();
             } else {
                 alert("Nenhum registro válido encontrado para importar.");
@@ -1025,10 +1068,20 @@ function openDetailModal(idx) {
     const statusClass = `badge-${b.status.toLowerCase()}`;
     
     content.innerHTML = `
+        ${b.booking_id ? `
+        <div class="modal-info-row">
+            <span class="modal-label">ID Agendamento</span>
+            <span class="modal-value" style="font-weight: 600;">#${b.booking_id}</span>
+        </div>` : ''}
         <div class="modal-info-row">
             <span class="modal-label">Cliente</span>
             <span class="modal-value" style="font-size: 1.1rem; color: var(--primary);">${b.name}</span>
         </div>
+        ${b.provider && b.provider !== 'Unassigned' ? `
+        <div class="modal-info-row">
+            <span class="modal-label">Equipe / Profissional</span>
+            <span class="modal-value">${b.provider}</span>
+        </div>` : ''}
         <div class="modal-info-row">
             <span class="modal-label">Data do Serviço</span>
             <span class="modal-value">${formatDateString(b.date)}</span>
@@ -1155,13 +1208,12 @@ async function syncDataOnline() {
         const data = new Uint8Array(arrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'bookings');
-        if (!sheetName && workbook.SheetNames.length > 0) {
-            sheetName = workbook.SheetNames[0];
-        }
+        let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'new bookings') ||
+                        workbook.SheetNames.find(n => n.toLowerCase() === 'bookings') ||
+                        workbook.SheetNames[0];
         
         if (!sheetName) {
-            throw new Error("Aba 'Bookings' não encontrada.");
+            throw new Error("Aba de agendamentos não encontrada.");
         }
         
         const sheet = workbook.Sheets[sheetName];
@@ -1171,86 +1223,7 @@ async function syncDataOnline() {
             throw new Error("Planilha vazia.");
         }
         
-        const newBookings = [];
-        
-        const normalizeDateToISO = (dateVal) => {
-            if (!dateVal) return "";
-            const dateStr = String(dateVal).trim();
-            if (/^\d+(\.\d+)?$/.test(dateStr)) {
-                const val = parseFloat(dateStr);
-                const dateObj = new Date(Date.UTC(1899, 11, 30) + val * 86400 * 1000);
-                return dateObj.toISOString().split('T')[0];
-            }
-            const matchISO = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (matchISO) return dateStr;
-            
-            const matchUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-            if (matchUS) {
-                const month = matchUS[1].padStart(2, '0');
-                const day = matchUS[2].padStart(2, '0');
-                const year = matchUS[3];
-                return `${year}-${month}-${day}`;
-            }
-            return dateStr;
-        };
-        
-        const excelTimeToJS = (excelVal) => {
-            let val = parseFloat(excelVal);
-            if (isNaN(val)) return String(excelVal).trim();
-            if (val > 1.0) {
-                val = val - Math.floor(val);
-            }
-            const totalSeconds = Math.round(val * 86400);
-            const hrs = Math.floor(totalSeconds / 3600);
-            const mins = Math.floor((totalSeconds % 3600) / 60);
-            
-            let period = "AM";
-            let dHrs = hrs;
-            if (hrs >= 12) {
-                period = "PM";
-                if (hrs > 12) dHrs -= 12;
-            }
-            if (dHrs === 0) dHrs = 12;
-            return `${String(dHrs).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
-        };
-        
-        for (let i = 1; i < rawRows.length; i++) {
-            const row = rawRows[i];
-            if (!row || row.length < 2) continue;
-            
-            const rawName = row[1];
-            if (!rawName || String(rawName).trim() === "") continue;
-            
-            const status = normalizeStatus(row[0]);
-            const dateVal = normalizeDateToISO(row[2]);
-            
-            let timeVal = row[3];
-            if (timeVal) {
-                timeVal = String(timeVal).trim();
-                if (/^\d+(\.\d+)?$/.test(timeVal)) {
-                    timeVal = excelTimeToJS(timeVal);
-                }
-            } else {
-                timeVal = "";
-            }
-            
-            const amount = cleanAmount(row[4]);
-            const payment = normalizePaymentMethod(row[5]);
-            const tip = cleanAmount(row[6]);
-            const paymentDateVal = normalizeDateToISO(row[7]);
-            
-            newBookings.push({
-                status: status,
-                name: String(rawName).trim(),
-                date: dateVal,
-                time: timeVal,
-                amount: amount,
-                payment_method: payment,
-                tip: tip,
-                total: Math.round((amount + tip) * 100) / 100,
-                payment_date: paymentDateVal
-            });
-        }
+        const newBookings = parseRowsToBookings(rawRows);
         
         if (newBookings.length > 0) {
             bookings = deduplicateBookings(newBookings);
@@ -1258,7 +1231,7 @@ async function syncDataOnline() {
             localStorage.setItem('north_bookings', JSON.stringify(bookings));
             
             refreshAllData();
-            alert(`Sincronização concluída! ${bookings.length} agendamentos atualizados.`);
+            alert(`Sincronização concluída! ${bookings.length} agendamentos atualizados da aba '${sheetName}'.`);
         } else {
             alert("Nenhum agendamento válido para importar.");
         }
@@ -1282,110 +1255,30 @@ async function syncDataOnlineSilently() {
         const data = new Uint8Array(arrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'bookings');
-        if (!sheetName && workbook.SheetNames.length > 0) {
-            sheetName = workbook.SheetNames[0];
-        }
+        let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'new bookings') ||
+                        workbook.SheetNames.find(n => n.toLowerCase() === 'bookings') ||
+                        workbook.SheetNames[0];
         if (!sheetName) return;
         
         const sheet = workbook.Sheets[sheetName];
         const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         if (rawRows.length <= 1) return;
         
-        const newBookings = [];
-        
-        const normalizeDateToISO = (dateVal) => {
-            if (!dateVal) return "";
-            const dateStr = String(dateVal).trim();
-            if (/^\d+(\.\d+)?$/.test(dateStr)) {
-                const val = parseFloat(dateStr);
-                const dateObj = new Date(Date.UTC(1899, 11, 30) + val * 86400 * 1000);
-                return dateObj.toISOString().split('T')[0];
-            }
-            const matchISO = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (matchISO) return dateStr;
-            
-            const matchUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-            if (matchUS) {
-                const month = matchUS[1].padStart(2, '0');
-                const day = matchUS[2].padStart(2, '0');
-                const year = matchUS[3];
-                return `${year}-${month}-${day}`;
-            }
-            return dateStr;
-        };
-        
-        const excelTimeToJS = (excelVal) => {
-            let val = parseFloat(excelVal);
-            if (isNaN(val)) return String(excelVal).trim();
-            if (val > 1.0) {
-                val = val - Math.floor(val);
-            }
-            const totalSeconds = Math.round(val * 86400);
-            const hrs = Math.floor(totalSeconds / 3600);
-            const mins = Math.floor((totalSeconds % 3600) / 60);
-            
-            let period = "AM";
-            let dHrs = hrs;
-            if (hrs >= 12) {
-                period = "PM";
-                if (hrs > 12) dHrs -= 12;
-            }
-            if (dHrs === 0) dHrs = 12;
-            return `${String(dHrs).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
-        };
-        
-        for (let i = 1; i < rawRows.length; i++) {
-            const row = rawRows[i];
-            if (!row || row.length < 2) continue;
-            
-            const rawName = row[1];
-            if (!rawName || String(rawName).trim() === "") continue;
-            
-            const status = normalizeStatus(row[0]);
-            const dateVal = normalizeDateToISO(row[2]);
-            
-            let timeVal = row[3];
-            if (timeVal) {
-                timeVal = String(timeVal).trim();
-                if (/^\d+(\.\d+)?$/.test(timeVal)) {
-                    timeVal = excelTimeToJS(timeVal);
-                }
-            } else {
-                timeVal = "";
-            }
-            
-            const amount = cleanAmount(row[4]);
-            const payment = normalizePaymentMethod(row[5]);
-            const tip = cleanAmount(row[6]);
-            const paymentDateVal = normalizeDateToISO(row[7]);
-            
-            newBookings.push({
-                status: status,
-                name: String(rawName).trim(),
-                date: dateVal,
-                time: timeVal,
-                amount: amount,
-                payment_method: payment,
-                tip: tip,
-                total: Math.round((amount + tip) * 100) / 100,
-                payment_date: paymentDateVal
-            });
-        }
+        const newBookings = parseRowsToBookings(rawRows);
         
         if (newBookings.length > 0) {
             bookings = deduplicateBookings(newBookings);
             sortBookingsGlobal();
             localStorage.setItem('north_bookings', JSON.stringify(bookings));
             refreshAllData();
-            console.log("Planilha sincronizada silenciosamente em tempo real.");
+            console.log("Planilha sincronizada silenciosamente em tempo real (aba: " + sheetName + ").");
         }
     } catch (e) {
         console.error("Erro na sincronização silenciosa:", e);
     }
 }
 
-// Deduplicate bookings by name, date and start hour
+// Deduplicate bookings by booking_id or name, date and start hour
 function deduplicateBookings(arr) {
     if (!arr || !Array.isArray(arr)) return [];
     const bookingMap = new Map();
@@ -1393,53 +1286,47 @@ function deduplicateBookings(arr) {
     for (const b of arr) {
         if (!b.name || !b.date) continue;
         
-        // Extract the start hour to group duplicates (e.g. "08:00 AM - 09:00 AM" -> "08 AM")
         const cleanTime = String(b.time || "").trim();
         let hourPart = "12 AM";
         const timeMatch = cleanTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
         if (timeMatch) {
             hourPart = `${timeMatch[1].padStart(2, '0')} ${timeMatch[3].toUpperCase()}`;
         } else if (cleanTime) {
-            // Fallback for cases like "08:00" or simple text hours
             const simpleMatch = cleanTime.match(/^(\d{1,2})/);
             if (simpleMatch) {
-                hourPart = `${simpleMatch[1].padStart(2, '0')} AM`; // Default to AM if unspecified
+                hourPart = `${simpleMatch[1].padStart(2, '0')} AM`;
             }
         }
         
-        const key = `${b.name.toLowerCase().trim()}|${b.date}|${hourPart}`;
+        const key = b.booking_id ? `bid_${b.booking_id}` : `${b.name.toLowerCase().trim()}|${b.date}|${hourPart}`;
         
         if (bookingMap.has(key)) {
             const existing = bookingMap.get(key);
             
-            // Merge duplicate columns:
-            // 1. Keep the more detailed time (has time range " - ")
             if (cleanTime.includes(' - ') && !String(existing.time || "").includes(' - ')) {
                 existing.time = b.time;
             }
-            // 2. Keep the more specific payment method (not "cash" lowercase or unspecified)
             if (b.payment_method && b.payment_method !== 'Unspecified' && 
                 (!existing.payment_method || existing.payment_method === 'Unspecified' || existing.payment_method.toLowerCase() === 'cash')) {
                 existing.payment_method = b.payment_method;
             }
-            // 3. Keep the payment date if present
             if (b.payment_date && b.payment_date !== '-' && (!existing.payment_date || existing.payment_date === '-')) {
                 existing.payment_date = b.payment_date;
             }
-            // 4. Keep status if more specific or paid
             if (b.status === 'Paid' || b.status === 'Charged') {
                 existing.status = b.status;
             }
-            // 5. Keep the higher amount / tip if there is one
             if (b.amount > existing.amount) {
                 existing.amount = b.amount;
             }
             if (b.tip > existing.tip) {
                 existing.tip = b.tip;
             }
+            if (b.provider && b.provider !== 'Unassigned') {
+                existing.provider = b.provider;
+            }
             existing.total = Math.round((existing.amount + existing.tip) * 100) / 100;
         } else {
-            // Clone booking object to prevent side-effects on original array references
             bookingMap.set(key, { ...b });
         }
     }
