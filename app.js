@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v6';
+const STORAGE_KEY = 'north_bookings_v7';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v6_exact_payment_methods';
+const CURRENT_DB_VERSION = 'v7_valor_pago_servico_col_o';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -348,7 +348,7 @@ function loadDailyView() {
     tbody.innerHTML = '';
     
     if (dayBookings.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;" class="view-subtitle">Nenhum agendamento para este dia.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 24px;" class="view-subtitle">Nenhum agendamento para este dia.</td></tr>`;
         return;
     }
     
@@ -380,6 +380,7 @@ function loadDailyView() {
             <td>
                 <div style="font-weight: 700; color: var(--text-primary);">${b.name}</div>
             </td>
+            <td style="font-family: var(--font-heading); font-weight: 600; color: #10b981;">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
             <td style="font-family: var(--font-heading); font-weight: 600;">${formatCurrency(b.amount)}</td>
             <td style="font-family: var(--font-heading); color: #10b981;">${b.tip > 0 ? formatCurrency(b.tip) : '-'}</td>
             <td>${b.payment_method}</td>
@@ -588,7 +589,7 @@ function renderBookingsTable() {
     const totalItems = filteredBookings.length;
     
     if (totalItems === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 24px;" class="view-subtitle">Nenhum agendamento encontrado para os filtros ativos.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 24px;" class="view-subtitle">Nenhum agendamento encontrado para os filtros ativos.</td></tr>`;
         document.getElementById('pagination-info').innerText = `Sem registros`;
         document.getElementById('btn-prev').disabled = true;
         document.getElementById('btn-next').disabled = true;
@@ -607,14 +608,31 @@ function renderBookingsTable() {
         // Find index of this booking in global array
         const globalIdx = bookings.findIndex(x => x.name === b.name && x.date === b.date && x.time === b.time);
         
+        const isPaidOrCharged = b.status === 'Paid' || b.status === 'Charged';
+        let paymentDateVal = '-';
+        if (isPaidOrCharged) {
+            if (b.payment_date && b.payment_date.includes('-')) {
+                const year = parseInt(b.payment_date.split('-')[0]);
+                if (year > 2000) {
+                    paymentDateVal = formatDateString(b.payment_date);
+                } else {
+                    paymentDateVal = formatDateString(b.date);
+                }
+            } else {
+                paymentDateVal = formatDateString(b.date);
+            }
+        }
+        
         tr.innerHTML = `
             <td>${formatDateString(b.date)}</td>
             <td>${b.time}</td>
             <td style="font-weight: 700; color: var(--text-primary);">${b.name}</td>
+            <td style="font-family: var(--font-heading); font-weight: 600; color: #10b981;">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
             <td style="font-family: var(--font-heading); font-weight: 600;">${formatCurrency(b.amount)}</td>
             <td style="font-family: var(--font-heading); color: #10b981;">${b.tip > 0 ? formatCurrency(b.tip) : '-'}</td>
             <td>${b.payment_method}</td>
             <td><span class="badge ${statusClass}">${b.status}</span></td>
+            <td>${paymentDateVal}</td>
             <td>
                 <button class="theme-toggle-btn" style="padding: 6px 12px; font-size: 0.75rem;" onclick="openDetailModal(${globalIdx})">
                     <i data-lucide="eye" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i> Ver
@@ -929,6 +947,7 @@ function parseRowsToBookings(rawRows) {
     const colClientId = findColIndex(['client id', 'client_id']);
     const colTxId = findColIndex(['transaction id', 'transaction_id']);
     const colPaymentDate = findColIndex(['payment date', 'payment_date']);
+    const colTotalPago = findColIndex(['total pago', 'total_pago', 'valor pago', 'valor_pago']);
 
     const normalizeDateToISO = (dateVal, startDtVal) => {
         if (startDtVal && String(startDtVal).includes('T')) {
@@ -998,6 +1017,7 @@ function parseRowsToBookings(rawRows) {
         const clientIdIdx = colClientId >= 0 ? colClientId : -1;
         const txIdIdx = colTxId >= 0 ? colTxId : -1;
         const paymentDateIdx = colPaymentDate >= 0 ? colPaymentDate : -1;
+        const totalPagoIdx = colTotalPago >= 0 ? colTotalPago : -1;
 
         const status = normalizeStatus(row[statusIdx]);
         const startDtVal = colStartDt >= 0 ? row[colStartDt] : null;
@@ -1014,6 +1034,7 @@ function parseRowsToBookings(rawRows) {
         }
 
         const amount = cleanAmount(row[amountIdx]);
+        const paidAmount = totalPagoIdx >= 0 && row[totalPagoIdx] !== null && row[totalPagoIdx] !== undefined ? cleanAmount(row[totalPagoIdx]) : 0;
         const payment = normalizePaymentMethod(row[paymentIdx]);
         const tip = cleanAmount(row[tipIdx]);
         const provider = providerIdx >= 0 && row[providerIdx] ? String(row[providerIdx]).trim() : "Unassigned";
@@ -1028,6 +1049,7 @@ function parseRowsToBookings(rawRows) {
             date: dateVal,
             time: timeVal,
             amount: amount,
+            paid_amount: paidAmount,
             payment_method: payment,
             tip: tip,
             total: Math.round((amount + tip) * 100) / 100,
@@ -1431,6 +1453,9 @@ function deduplicateBookings(arr) {
             }
             if (b.amount > existing.amount) {
                 existing.amount = b.amount;
+            }
+            if ((b.paid_amount || 0) > (existing.paid_amount || 0)) {
+                existing.paid_amount = b.paid_amount;
             }
             if (b.tip > existing.tip) {
                 existing.tip = b.tip;
