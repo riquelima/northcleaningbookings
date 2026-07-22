@@ -1040,9 +1040,12 @@ function parseRowsToBookings(rawRows) {
         }
 
         const amount = cleanAmount(row[amountIdx]);
-        const paidAmount = totalPagoIdx >= 0 && row[totalPagoIdx] !== null && row[totalPagoIdx] !== undefined ? cleanAmount(row[totalPagoIdx]) : 0;
-        const payment = normalizePaymentMethod(row[paymentIdx]);
         const tip = cleanAmount(row[tipIdx]);
+        const rawPaidAmount = totalPagoIdx >= 0 && row[totalPagoIdx] !== null && row[totalPagoIdx] !== undefined ? cleanAmount(row[totalPagoIdx]) : 0;
+        const isPaidOrChargedStatus = status === 'Paid' || status === 'Charged';
+        const paidAmount = rawPaidAmount > 0 ? rawPaidAmount : (isPaidOrChargedStatus ? Math.round((amount + tip) * 100) / 100 : 0);
+        
+        const payment = normalizePaymentMethod(row[paymentIdx]);
         const provider = providerIdx >= 0 && row[providerIdx] ? String(row[providerIdx]).trim() : "Unassigned";
         const bookingId = bookingIdIdx >= 0 && row[bookingIdIdx] !== null && row[bookingIdIdx] !== undefined ? String(row[bookingIdIdx]).replace(/\.0$/, '').trim() : "";
         const clientId = clientIdIdx >= 0 && row[clientIdIdx] ? String(row[clientIdIdx]).trim() : "";
@@ -1342,42 +1345,17 @@ function parseCSVToRows(text) {
     return result;
 }
 
-function updateLiveIndicator(isOnline, lastSyncTime) {
-    const badge = document.getElementById('live-status-indicator');
-    if (!badge || typeof badge.querySelector !== 'function') return;
-    const textEl = badge.querySelector('.live-text');
-    if (isOnline) {
-        badge.classList.remove('offline');
-        if (textEl) {
-            const timeStr = lastSyncTime ? lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-            textEl.innerText = timeStr ? `Ao Vivo (${timeStr})` : 'Ao Vivo';
-        }
-    } else {
-        badge.classList.add('offline');
-        if (textEl) textEl.innerText = 'Off-line';
-    }
-}
-
 async function syncDataOnlineSilently() {
     try {
         const csvUrl = "https://docs.google.com/spreadsheets/d/10Or1J8nzgEXgyVJ0Y_0QDnpxRsqXF2Ywxbm-VF6figo/gviz/tq?tqx=out:csv&sheet=New%20Bookings";
         const response = await fetch(csvUrl);
-        if (!response.ok) {
-            updateLiveIndicator(false);
-            return;
-        }
+        if (!response.ok) return;
         
         const csvText = await response.text();
-        if (!csvText || csvText.length < 500) {
-            updateLiveIndicator(false);
-            return;
-        }
+        if (!csvText || csvText.length < 500) return;
         
         const rawRows = parseCSVToRows(csvText);
-        if (!rawRows || rawRows.length <= 1) {
-            updateLiveIndicator(false);
-            return;
-        }
+        if (!rawRows || rawRows.length <= 1) return;
         
         const newBookings = parseRowsToBookings(rawRows);
         if (newBookings.length >= 100) {
@@ -1391,13 +1369,11 @@ async function syncDataOnlineSilently() {
                 sortBookingsGlobal();
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
                 refreshAllData();
-                console.log("⚡ Dashboard atualizada automaticamente em tempo real via Google Sheets CSV.");
+                console.log("⚡ Dashboard atualizada silenciosamente via Google Sheets CSV.");
             }
-            updateLiveIndicator(true, new Date());
         }
     } catch (e) {
-        console.warn("Erro na sincronização em tempo real:", e);
-        updateLiveIndicator(false);
+        console.warn("Erro na sincronização silenciosa:", e);
     }
 }
 
