@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v7';
+const STORAGE_KEY = 'north_bookings_v8';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v7_valor_pago_servico_col_o';
+const CURRENT_DB_VERSION = 'v8_conditional_paid_color';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -375,12 +375,15 @@ function loadDailyView() {
             }
         }
         
+        const isOverpaid = (b.paid_amount || 0) > (b.amount || 0);
+        const paidStyle = isOverpaid ? 'color: #10b981;' : '';
+        
         tr.innerHTML = `
             <td style="font-weight: 600;">${b.time}</td>
             <td>
                 <div style="font-weight: 700; color: var(--text-primary);">${b.name}</div>
             </td>
-            <td style="font-family: var(--font-heading); font-weight: 600; color: #10b981;">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
+            <td style="font-family: var(--font-heading); font-weight: 600; ${paidStyle}">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
             <td style="font-family: var(--font-heading); font-weight: 600;">${formatCurrency(b.amount)}</td>
             <td style="font-family: var(--font-heading); color: #10b981;">${b.tip > 0 ? formatCurrency(b.tip) : '-'}</td>
             <td>${b.payment_method}</td>
@@ -623,11 +626,14 @@ function renderBookingsTable() {
             }
         }
         
+        const isOverpaid = (b.paid_amount || 0) > (b.amount || 0);
+        const paidStyle = isOverpaid ? 'color: #10b981;' : '';
+        
         tr.innerHTML = `
             <td>${formatDateString(b.date)}</td>
             <td>${b.time}</td>
             <td style="font-weight: 700; color: var(--text-primary);">${b.name}</td>
-            <td style="font-family: var(--font-heading); font-weight: 600; color: #10b981;">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
+            <td style="font-family: var(--font-heading); font-weight: 600; ${paidStyle}">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</td>
             <td style="font-family: var(--font-heading); font-weight: 600;">${formatCurrency(b.amount)}</td>
             <td style="font-family: var(--font-heading); color: #10b981;">${b.tip > 0 ? formatCurrency(b.tip) : '-'}</td>
             <td>${b.payment_method}</td>
@@ -1142,6 +1148,10 @@ function openDetailModal(idx) {
         <div class="modal-info-row">
             <span class="modal-label">Horário</span>
             <span class="modal-value">${b.time}</span>
+        </div>
+        <div class="modal-info-row">
+            <span class="modal-label">Valor Pago (Total Pago)</span>
+            <span class="modal-value" style="font-family: var(--font-heading); ${((b.paid_amount || 0) > (b.amount || 0)) ? 'color: #10b981;' : ''}">${(b.paid_amount || 0) > 0 ? formatCurrency(b.paid_amount) : '-'}</span>
         </div>
         <div class="modal-info-row">
             <span class="modal-label">Valor do Serviço</span>
