@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // INITIALIZATION
-const STORAGE_KEY = 'north_bookings_v5';
+const STORAGE_KEY = 'north_bookings_v6';
 const STORAGE_VERSION_KEY = 'north_bookings_version';
-const CURRENT_DB_VERSION = 'v5_paid_status_synced';
+const CURRENT_DB_VERSION = 'v6_exact_payment_methods';
 
 function initApp() {
     const initialArr = (window.INITIAL_BOOKINGS && Array.isArray(window.INITIAL_BOOKINGS)) ? window.INITIAL_BOOKINGS : [];
@@ -1409,21 +1409,10 @@ function normalizeStatus(status) {
 }
 
 function normalizePaymentMethod(pm) {
-    if (!pm) return "Unspecified";
-    const p = String(pm).trim().toLowerCase();
-    if (pm === "CC" || p === "cc" || p === "existing_credit_card" || p === "credit card") {
-        return "Credit Card";
-    }
-    if (p === "zelle/venmo" || p === "venmo" || p === "zelle") {
-        return "Zelle / Venmo";
-    }
-    if (p === "cash/check" || p === "cash" || p === "check") {
-        return "Cash / Check";
-    }
-    if (p === "square") {
-        return "Square";
-    }
-    return String(pm).trim();
+    if (!pm) return "Cash/Check";
+    const s = String(pm).trim();
+    if (!s || s.toLowerCase() === "none" || s.toLowerCase() === "unspecified") return "Cash/Check";
+    return s;
 }
 
 function getAtlantaDateString() {
