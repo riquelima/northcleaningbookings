@@ -162,12 +162,46 @@ h1, h2, h3, h4, h5, h6 {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.theme-toggle-btn:hover, .sync-btn:hover {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--primary-glow);
+.live-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #10b981;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: default;
+    transition: all 0.3s ease;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: livePulse 2s infinite;
+}
+
+@keyframes livePulse {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 12px #10b981; }
+    100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.live-status-badge.offline {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+}
+
+.live-status-badge.offline .live-dot {
+    background-color: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    animation: none;
 }
 
 /* ==========================================================================

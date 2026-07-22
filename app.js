@@ -94,6 +94,16 @@ function initApp() {
     
     // Initialize components
     refreshAllData();
+
+    // Trigger real-time background sync 1s after load
+    setTimeout(() => {
+        syncDataOnlineSilently();
+    }, 1000);
+
+    // Periodic real-time sync every 10 seconds
+    setInterval(() => {
+        syncDataOnlineSilently();
+    }, 10000);
 }
 
 // REFRESH ALL DATA VIEWS
@@ -1268,36 +1278,94 @@ async function syncDataOnline() {
     }
 }
 
+function parseCSVToRows(text) {
+    if (!text) return [];
+    const lines = text.split(/\r?\n/);
+    const result = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+        const row = [];
+        let insideQuote = false;
+        let entry = '';
+        for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') {
+                if (insideQuote && line[j + 1] === '"') {
+                    entry += '"';
+                    j++;
+                } else {
+                    insideQuote = !insideQuote;
+                }
+            } else if (char === ',' && !insideQuote) {
+                row.push(entry);
+                entry = '';
+            } else {
+                entry += char;
+            }
+        }
+        row.push(entry);
+        result.push(row);
+    }
+    return result;
+}
+
+function updateLiveIndicator(isOnline, lastSyncTime) {
+    const badge = document.getElementById('live-status-indicator');
+    if (!badge || typeof badge.querySelector !== 'function') return;
+    const textEl = badge.querySelector('.live-text');
+    if (isOnline) {
+        badge.classList.remove('offline');
+        if (textEl) {
+            const timeStr = lastSyncTime ? lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+            textEl.innerText = timeStr ? `Ao Vivo (${timeStr})` : 'Ao Vivo';
+        }
+    } else {
+        badge.classList.add('offline');
+        if (textEl) textEl.innerText = 'Off-line';
+    }
+}
+
 async function syncDataOnlineSilently() {
     try {
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/10Or1J8nzgEXgyVJ0Y_0QDnpxRsqXF2Ywxbm-VF6figo/export?format=xlsx";
-        const response = await fetch(sheetUrl);
-        if (!response.ok) return;
+        const csvUrl = "https://docs.google.com/spreadsheets/d/10Or1J8nzgEXgyVJ0Y_0QDnpxRsqXF2Ywxbm-VF6figo/gviz/tq?tqx=out:csv&sheet=New%20Bookings";
+        const response = await fetch(csvUrl);
+        if (!response.ok) {
+            updateLiveIndicator(false);
+            return;
+        }
         
-        const arrayBuffer = await response.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const csvText = await response.text();
+        if (!csvText || csvText.length < 500) {
+            updateLiveIndicator(false);
+            return;
+        }
         
-        let sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'new bookings') ||
-                        workbook.SheetNames.find(n => n.toLowerCase() === 'bookings') ||
-                        workbook.SheetNames[0];
-        if (!sheetName) return;
-        
-        const sheet = workbook.Sheets[sheetName];
-        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        if (rawRows.length <= 1) return;
+        const rawRows = parseCSVToRows(csvText);
+        if (!rawRows || rawRows.length <= 1) {
+            updateLiveIndicator(false);
+            return;
+        }
         
         const newBookings = parseRowsToBookings(rawRows);
-        
         if (newBookings.length >= 100) {
-            bookings = deduplicateBookings(newBookings);
-            sortBookingsGlobal();
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
-            refreshAllData();
-            console.log("Planilha sincronizada silenciosamente em tempo real (aba: " + sheetName + ").");
+            const deduped = deduplicateBookings(newBookings);
+            
+            const newStr = JSON.stringify(deduped);
+            const curStr = JSON.stringify(bookings);
+            
+            if (newStr !== curStr) {
+                bookings = deduped;
+                sortBookingsGlobal();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
+                refreshAllData();
+                console.log("⚡ Dashboard atualizada automaticamente em tempo real via Google Sheets CSV.");
+            }
+            updateLiveIndicator(true, new Date());
         }
     } catch (e) {
-        console.error("Erro na sincronização silenciosa:", e);
+        console.warn("Erro na sincronização em tempo real:", e);
+        updateLiveIndicator(false);
     }
 }
 
