@@ -330,16 +330,20 @@ function loadDailyView() {
     
     // Compute day KPIs
     let dayRevenue = 0;
+    let dayTips = 0;
     let unpaidCount = 0;
     
     dayBookings.forEach(b => {
         dayRevenue += b.amount || 0;
+        dayTips += b.tip || 0;
         if (b.status.toLowerCase() !== 'paid') {
             unpaidCount++;
         }
     });
     
     document.getElementById('daily-revenue').innerText = formatCurrency(dayRevenue);
+    const dailyTipsEl = document.getElementById('daily-tips');
+    if (dailyTipsEl) dailyTipsEl.innerText = formatCurrency(dayTips);
     document.getElementById('daily-count').innerText = dayBookings.length;
     document.getElementById('daily-unpaid-count').innerText = unpaidCount;
     
